@@ -3900,7 +3900,15 @@ async function listIssueBlockerAttentionMap(
           ),
         );
       for (const row of monitorRows) {
-        if (hasScheduledIssueMonitorPath(row, monitorNowMs))
+        // tickDueIssueMonitors only dispatches in_progress/in_review issues.
+        // A todo/backlog/blocked node can retain valid-looking monitor fields
+        // (e.g. moved back out of in_progress without clearing them) that will
+        // never fire — the same dead-field pattern as the cancelled guard
+        // above, just reached through a different status transition.
+        if (
+          (row.status === "in_progress" || row.status === "in_review") &&
+          hasScheduledIssueMonitorPath(row, monitorNowMs)
+        )
           explicitWaitingIssueIds.add(row.id);
       }
 

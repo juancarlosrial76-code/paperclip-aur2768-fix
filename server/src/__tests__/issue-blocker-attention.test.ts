@@ -862,6 +862,35 @@ describeEmbeddedPostgres("issue blocker attention", () => {
     });
   });
 
+  it("does not treat a blocked blocker's retained monitor as a covered waiting path", async () => {
+    const { companyId, agentId } = await createCompany("PBBM");
+    const parentId = await insertIssue({ companyId, identifier: "PBBM-1", title: "Parent", status: "blocked" });
+    // tickDueIssueMonitors only dispatches in_progress/in_review issues. If a blocker
+    // is moved back to blocked (or todo/backlog) without clearing monitorNextCheckAt,
+    // the field looks identical to a live monitor but the dispatcher will never pick
+    // it up again — the same dead-field shape as the cancelled case above, reached
+    // through a different status transition.
+    const blockerId = await insertIssue({
+      companyId,
+      identifier: "PBBM-2",
+      title: "Blocked blocker with a retained monitor",
+      status: "blocked",
+      assigneeAgentId: agentId,
+      monitorNextCheckAt: new Date(Date.now() + 60 * 60 * 1000),
+      executionState: monitorState({ timeoutAt: new Date(Date.now() + 24 * 60 * 60 * 1000) }),
+    });
+    await block({ companyId, blockerIssueId: blockerId, blockedIssueId: parentId });
+
+    const parent = (await svc.list(companyId, { status: "blocked" })).find((issue) => issue.id === parentId);
+
+    expect(parent?.blockerAttention).toMatchObject({
+      state: "needs_attention",
+      coveredBlockerCount: 0,
+      attentionBlockerCount: 1,
+      sampleBlockerIdentifier: "PBBM-2",
+    });
+  });
+
   it("does not treat a cancelled blocker's pending approval as a covered waiting path", async () => {
     const { companyId, agentId } = await createCompany("PBCA");
     const parentId = await insertIssue({ companyId, identifier: "PBCA-1", title: "Parent", status: "blocked" });
